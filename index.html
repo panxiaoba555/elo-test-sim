@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>简单加法测试器</title>
+<title>简单乘法测试器</title>
 <style>
 *{box-sizing:border-box;font-family:system-ui,sans-serif;}
 body{max-width:500px;margin:40px auto;padding:0 20px;background:#111;color:#eee;}
@@ -16,12 +16,12 @@ button{width:100%;margin-top:18px;padding:12px;background:#2563eb;color:#fff;bor
 </head>
 <body>
 <div class="box">
-<h2>加法测试工具</h2>
+<h2>乘法测试工具</h2>
 <label>数字A</label>
 <input id="a" type="number" step="any">
 <label>数字B</label>
 <input id="b" type="number" step="any">
-<button id="btn">计算A+B</button>
+<button id="btn">计算 A × B</button>
 <div id="res"></div>
 </div>
 <script>
@@ -33,7 +33,7 @@ btn.onclick = function(){
         document.getElementById("res").innerText = "请输入有效的数字！";
         return;
     }
-    document.getElementById("res").innerText = `结果：${a} + ${b} = ${a+b}`;
+    document.getElementById("res").innerText = `结果：${a} × ${b} = ${a * b}`;
 }
 </script>
 </body>
