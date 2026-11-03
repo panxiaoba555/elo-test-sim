@@ -3,38 +3,180 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>简单乘法测试器</title>
+<title>王者排位团队MMR模拟器</title>
 <style>
 *{box-sizing:border-box;font-family:system-ui,sans-serif;}
-body{max-width:500px;margin:40px auto;padding:0 20px;background:#111;color:#eee;}
-.box{background:#222;padding:24px;border-radius:12px;}
-label{display:block;margin:12px 0 4px;}
-input{width:100%;padding:10px;border-radius:6px;border:none;font-size:16px;}
-button{width:100%;margin-top:18px;padding:12px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:16px;cursor:pointer;}
-#res{margin-top:20px;padding:14px;background:#1a1a1a;border-radius:8px;}
+body{max-width:620px;margin:40px auto;padding:0 20px;background:#11141a;color:#e6edf3;}
+.box{background:#1c212c;padding:28px;border-radius:14px;}
+label{display:block;margin-top:14px;margin-bottom:6px;font-size:15px;}
+input{width:100%;padding:11px;border:1px solid #394150;border-radius:8px;background:#11141a;color:white;font-size:16px;}
+button{width:100%;margin-top:20px;padding:13px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:17px;cursor:pointer;}
+button:disabled{background:#2c3444;cursor:not-allowed;}
+#output{margin-top:22px;padding:16px;background:#11141a;border-radius:8px;white-space:pre-line;line-height:1.6;}
+.note{color:#9aa3b2;font-size:14px;}
 </style>
 </head>
 <body>
 <div class="box">
-<h2>乘法测试工具</h2>
-<label>数字A</label>
-<input id="a" type="number" step="any">
-<label>数字B</label>
-<input id="b" type="number" step="any">
-<button id="btn">计算 A × B</button>
-<div id="res"></div>
+    <h2>王者荣耀 排位MMR均衡模拟器</h2>
+    <p class="note">⚠️ 还原均衡匹配机制，非官方源码，仅数学模拟<br>
+    玩家池固定1000人，模拟100局排位，预测长期胜率</p>
+
+    <label for="mmrInput">你的初始隐藏MMR（推荐 1200 ~ 1700）</label>
+    <input id="mmrInput" type="number" value="1400" step="10">
+
+    <button id="runBtn">开始模拟100局</button>
+    <div id="output"></div>
 </div>
+
 <script>
-const btn = document.getElementById("btn");
-btn.onclick = function(){
-    const a = parseFloat(document.getElementById("a").value);
-    const b = parseFloat(document.getElementById("b").value);
-    if(isNaN(a)||isNaN(b)){
-        document.getElementById("res").innerText = "请输入有效的数字！";
-        return;
+class Player {
+    constructor(name, mmr) {
+        this.name = name;
+        this.mmr = mmr;
+        this.winCount = 0;
+        this.loseCount = 0;
     }
-    document.getElementById("res").innerText = `结果：${a} × ${b} = ${a * b}`;
 }
+
+// 队伍A战胜队伍B的概率，标准ELO公式
+function expectedWinProb(teamASum, teamBSum) {
+    const diff = teamBSum - teamASum;
+    return 1.0 / (1 + Math.pow(10, diff / 400));
+}
+
+// 组合枚举：10个候选人里选出5v5分组，目标两队总MMR差值最小
+function getCombinations(arr, k) {
+    const res = [];
+    function dfs(start, path) {
+        if(path.length === k) {res.push([...path]);return;}
+        for(let i=start;i<arr.length;i++){
+            path.push(i);
+            dfs(i+1, path);
+            path.pop();
+        }
+    }
+    dfs(0, []);
+    return res;
+}
+function matchMake(candidates) {
+    const idxList = getCombinations([0,1,2,3,4,5,6,7,8,9],5);
+    let bestDiff = 999999;
+    let bestT1, bestT2;
+    for(const idx1 of idxList) {
+        const t1 = idx1.map(i=>candidates[i]);
+        const t2 = candidates.filter((_,i)=>!idx1.includes(i));
+        const s1 = t1.reduce((sum,p)=>sum+p.mmr,0);
+        const s2 = t2.reduce((sum,p)=>sum+p.mmr,0);
+        const d = Math.abs(s1-s2);
+        if(d < bestDiff) {
+            bestDiff = d;
+            bestT1 = t1;
+            bestT2 = t2;
+        }
+    }
+    return [bestT1, bestT2];
+}
+
+// 一局对战逻辑：带个人贡献（贴近王者败方MVP规则）
+function runGame(team1, team2) {
+    const s1 = team1.reduce((sum,p)=>sum+p.mmr,0);
+    const s2 = team2.reduce((sum,p)=>sum+p.mmr,0);
+    const prob1 = expectedWinProb(s1, s2);
+    const prob2 = 1 - prob1;
+
+    // 给本局每个玩家生成随机对局贡献 0.2 ~ 1.0，越高=本局打得越好（MVP）
+    for(const p of team1) p.contribution = 0.2 + Math.random() * 0.8;
+    for(const p of team2) p.contribution = 0.2 + Math.random() * 0.8;
+
+    let winnerTeam, loserTeam, winProb;
+    if(Math.random() < prob1) {
+        winnerTeam = team1;
+        loserTeam = team2;
+        winProb = prob1;
+    } else {
+        winnerTeam = team2;
+        loserTeam = team1;
+        winProb = prob2;
+    }
+
+    // K值：MMR越高，K越小（高分隐藏分难涨）
+    function getK(mmr){
+        if(mmr < 1300) return 32;
+        if(mmr < 1500) return 24;
+        if(mmr < 1700) return 16;
+        return 10;
+    }
+
+    // 胜者：贡献越高，加分越多
+    for(const p of winnerTeam) {
+        const K = getK(p.mmr);
+        const delta = K * (1.0 - winProb) * p.contribution;
+        p.mmr += delta;
+        p.winCount += 1;
+    }
+    // 败者：贡献越高（败方MVP），扣分越少
+    for(const p of loserTeam) {
+        const K = getK(p.mmr);
+        const delta = K * (0.0 - winProb) * (1.1 - p.contribution);
+        p.mmr += delta;
+        p.loseCount += 1;
+    }
+    return {winner:winnerTeam, loser:loserTeam};
+}
+
+async function simulate() {
+    const myMMR = parseFloat(document.getElementById("mmrInput").value);
+    const POOL_SIZE = 1000; // 固定1000人玩家池
+    const SIM_ROUND = 100;
+    const outputDom = document.getElementById("output");
+    const btn = document.getElementById("runBtn");
+    btn.disabled = true;
+    outputDom.innerText = "模拟运行中，1000人大池计算会慢一点，请等待...";
+
+    // 生成玩家池：基准1200，浮动±120
+    const pool = [];
+    const me = new Player("我", myMMR);
+    pool.push(me);
+    for(let i=1; i < POOL_SIZE; i++) {
+        const offset = Math.random() * 240 - 120;
+        pool.push(new Player(`player${i}`, 1200 + offset));
+    }
+
+    let myWin = 0;
+    for(let round=0; round < SIM_ROUND; round++) {
+        // 随机抽取10人进入本局匹配
+        const shuffled = [...pool].sort(()=>Math.random()-0.5);
+        const candidates = shuffled.slice(0,10);
+        const [t1, t2] = matchMake(candidates);
+        const res = runGame(t1, t2);
+        const meInT1 = t1.some(x=>x===me);
+        const meInT2 = t2.some(x=>x===me);
+        if( (meInT1 && res.winner === t1) || (meInT2 && res.winner === t2) ) {
+            myWin += 1;
+        }
+        // 释放浏览器主线程，防止卡死
+        await new Promise(r=>setTimeout(r,1));
+    }
+
+    const wr = myWin / SIM_ROUND;
+    const text = `===== 100局排位模拟结果 =====
+玩家池总人数：${POOL_SIZE}
+你的初始MMR：${myMMR.toFixed(2)}
+对局数量：${SIM_ROUND}局
+胜利局数：${myWin}局
+长期模拟胜率：${(wr*100).toFixed(2)}%
+模拟结束后你的MMR：${me.mmr.toFixed(2)}
+
+【模型说明（客观）】
+1. 匹配逻辑：系统选出10人，5v5分组，最小化两队总MMR差距，均衡对局
+2. 加分扣分：加入本局贡献分（模拟败方MVP少扣分），高分段K衰减
+3. 体感来源：当你的MMR高于池子平均，匹配会自动分配低实力队友对冲总分
+4. ⚠️ 不是王者荣耀官方算法，是基于均衡匹配机制的数学模拟，仅供参考`;
+    outputDom.innerText = text;
+    btn.disabled = false;
+}
+document.getElementById("runBtn").addEventListener("click", simulate);
 </script>
 </body>
 </html>
